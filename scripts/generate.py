@@ -79,13 +79,31 @@ def silence(seconds: float, rate: int) -> bytes:
     return b"\x00\x00" * int(seconds * rate)
 
 
+def get_ffmpeg() -> str:
+    """ffmpeg din sistem, sau (daca lipseste) cel adus de pachetul imageio-ffmpeg."""
+    import shutil
+    exe = shutil.which("ffmpeg")
+    if exe:
+        return exe
+    subprocess.run([sys.executable, "-m", "pip", "install", "--quiet", "imageio-ffmpeg"],
+                   check=True)
+    import imageio_ffmpeg
+    return imageio_ffmpeg.get_ffmpeg_exe()
+
+
+_FFMPEG = None
+
+
 def encode_mp3(pcm: bytes, rate: int, path: str):
+    global _FFMPEG
+    if _FFMPEG is None:
+        _FFMPEG = get_ffmpeg()
     with tempfile.NamedTemporaryFile(suffix=".raw", delete=False) as f:
         f.write(pcm)
         raw = f.name
     try:
         subprocess.run(
-            ["ffmpeg", "-y", "-loglevel", "error", "-f", "s16le", "-ar", str(rate),
+            [_FFMPEG, "-y", "-loglevel", "error", "-f", "s16le", "-ar", str(rate),
              "-ac", "1", "-i", raw, "-codec:a", "libmp3lame", "-b:a", "56k", path],
             check=True)
     finally:

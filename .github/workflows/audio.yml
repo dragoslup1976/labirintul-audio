@@ -1,0 +1,69 @@
+name: Genereaza audio articole
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: audio
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Instaleaza dependentele
+        run: pip install piper-tts requests
+
+      - name: Modelul vocii (cache)
+        id: model-cache
+        uses: actions/cache@v4
+        with:
+          path: models
+          key: piper-ro_RO-mihai-medium-v1
+
+      - name: Descarca modelul vocii
+        if: steps.model-cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p models
+          base=https://huggingface.co/rhasspy/piper-voices/resolve/main/ro/ro_RO/mihai/medium
+          curl -fsSL -o models/ro_RO-mihai-medium.onnx "$base/ro_RO-mihai-medium.onnx"
+          curl -fsSL -o models/ro_RO-mihai-medium.onnx.json "$base/ro_RO-mihai-medium.onnx.json"
+
+      - name: Genereaza audio
+        run: python scripts/generate.py
+
+      - name: Salveaza in repository
+        run: |
+          git config user.name "audio-bot"
+          git config user.email "audio-bot@users.noreply.github.com"
+          git add public
+          if git diff --cached --quiet; then
+            echo "Nimic nou de salvat."
+          else
+            git commit -m "Audio actualizat"
+            git push
+          fi
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+      - id: deploy
+        uses: actions/deploy-pages@v4
